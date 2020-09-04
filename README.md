@@ -1,3 +1,5 @@
+[![Crate](https://img.shields.io/crates/v/ssam.svg)](https://crates.io/crates/ssam)
+
 # Ssam
 
 Ssam, short for split sampler, splits one or more text-based input files into multiple

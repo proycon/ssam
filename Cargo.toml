@@ -2,6 +2,14 @@
 name = "ssam"
 version = "0.1.0"
 authors = ["Maarten van Gompel <proycon@anaproy.nl>"]
+description = "Ssam, short for split sampler, splits one or more text-based input files into multiple sets using random sampling. This is useful for splitting data into a training, test and development sets, or whatever sets you desire."
+homepage = "https://github.com/proycon/ssam/"
+repository = "https://github.com/proycon/ssam"
+documentation = "https://docs.rs/ssam"
+categories = ["science","text-processing", "command-line-utilities"]
+keywords = ["nlp","text-processing","data-science","linguistics"]
+license = "GPL-3.0+"
+readme = "README.md"
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
