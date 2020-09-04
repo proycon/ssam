@@ -39,12 +39,16 @@ fn main() {
             .short("s")
             .takes_value(true)
             .help("Comma seperated list of sizes of each of the sets to sample, i.e. the number of units to sample per set. If the number is a floating point value, it will be interpreted as a relative fraction. Use an asterisk (*) to represent all remaining units (can only be used once). Example: *,1000,1000. This value aligns with --names")
-            .required(true)
             )
         .arg(Arg::with_name("replace")
             .long("replace")
             .short("-r")
             .help("Sample with replacement. This means a unit may be sampled into multiple sets or multiple times in the same set. The default is always to sample without replacement.")
+            )
+        .arg(Arg::with_name("shuffle")
+            .long("shuffle")
+            .short("-x")
+            .help("Do not preserve order, but perform extra shuffling")
             )
         .arg(Arg::with_name("seed")
             .long("seed")
@@ -81,7 +85,7 @@ fn main() {
         "txt"
     };
 
-    let sizes: Vec<_> = args.value_of("sizes").unwrap().split(",").collect();
+    let sizes: Vec<_> = args.value_of("sizes").unwrap_or("*").split(",").collect();
     let sizes: Vec<SetSize> = sizes.into_iter().map( |size|
         if size == "*" {
             SetSize::Remainder
@@ -225,13 +229,15 @@ fn main() {
         eprintln!("NOTICE: There are {} units not covered by any of the output sets", unassigned.len());
     }
 
+    let shuffle = args.is_present("shuffle");
+
     //output data
     if data.len() == 1 && sizes.len() == 1 {
         //there is only one output stream: use stdout
-        output_to_stdout(&data[0], &assignment, delimiter);
+        output_to_stdout(&data[0], &assignment, delimiter, shuffle, &mut rng);
     } else {
         //output to files
-        output_to_files(&data, &assignment, &outputprefixes, &setnames, delimiter, extension);
+        output_to_files(&data, &assignment, &outputprefixes, &setnames, delimiter, extension, shuffle, &mut rng);
     }
 
 
@@ -273,7 +279,7 @@ fn parse_lines(lines: Lines<impl BufRead>, delimiter: Option<&str>) -> Vec<Strin
 }
 
 
-fn output_to_files(data: &Vec<Vec<String>>, assignment: &Vec<Option<u8>>, outputprefixes: &Vec<String>, setnames: &Vec<String>, delimiter: Option<&str>, extension: &str) {
+fn output_to_files(data: &Vec<Vec<String>>, assignment: &Vec<Option<u8>>, outputprefixes: &Vec<String>, setnames: &Vec<String>, delimiter: Option<&str>, extension: &str, shuffle: bool, rng: &mut Pcg64) {
     let mut filehandlers: Vec<(File,bool)> = Vec::new(); //the boolean is there to keep track if the file has been written to already
     for outputprefix in outputprefixes.iter() {
         for setname in setnames.iter() {
@@ -284,9 +290,15 @@ fn output_to_files(data: &Vec<Vec<String>>, assignment: &Vec<Option<u8>>, output
         }
     }
 
+    let mut indices: Vec<usize> = (0..assignment.len()).collect();
+    if shuffle {
+        indices.shuffle(rng);
+    }
     for (i, data) in data.iter().enumerate() {
         let fh_offset = i * setnames.len();
-        for (unit, assigned_set) in data.iter().zip(assignment.iter()) {
+        for j in indices.iter() {
+            let unit = &data[*j];
+            let assigned_set = &assignment[*j];
             if let Some(assigned_set) =  assigned_set {
                 if let Some((file, written)) = filehandlers.get_mut(fh_offset + *assigned_set as usize) {
                     if delimiter.is_some() && *written {
@@ -305,9 +317,15 @@ fn output_to_files(data: &Vec<Vec<String>>, assignment: &Vec<Option<u8>>, output
     }
 }
 
-fn output_to_stdout(data: &Vec<String>, assignment: &Vec<Option<u8>>,  delimiter: Option<&str>) {
+fn output_to_stdout(data: &Vec<String>, assignment: &Vec<Option<u8>>,  delimiter: Option<&str>, shuffle: bool, rng: &mut Pcg64) {
     let mut written = false;
-    for (unit, assigned_set) in data.iter().zip(assignment.iter()) {
+    let mut indices: Vec<usize> = (0..assignment.len()).collect();
+    if shuffle {
+        indices.shuffle(rng);
+    }
+    for j in indices.iter() {
+        let unit = &data[*j];
+        let assigned_set = &assignment[*j];
         if assigned_set.is_some() {
             if delimiter.is_some() && written {
                 print!("{}\n", delimiter.unwrap());

@@ -8,9 +8,10 @@ development sets, or whatever sets you desire.
 
 * Split input into multiple sets, user can specify the size of each set in either absolute numbers or a relative fraction.
 * Supports both sampling without replacement (default) or with replacement.
-* Defaults to line-based sampling, but a custom delimiter can be configured to sample larger blocks.
+* Defaults to line-based sampling, but a custom delimiter can be configured to sample larger blocks of variable size.
 * Can handle multiple input files that will be considered **dependent**. Useful for splitting and sampling for instance parallel corpora.
-* Specify a seed for the random number generator to create reproducible samples.
+* By default ordering is preserved, use ``--shuffle`` for more randomness.
+* Specify a seed for the random number generator to create **reproducible samples**.
 
 ## Installation
 
@@ -41,10 +42,11 @@ the ones in `sentences.txt` (i.e. the same line numbers correspond and contain t
 dependent split as follows:
 
 ```
-$ ssam --sizes "0.1,0.1,*" --names "test,dev,train" sentences.txt sätze.txt
+$ ssam --shuffle --sizes "0.1,0.1,*" --names "test,dev,train" sentences.txt sätze.txt
 ```
 
-The sentences will still correspond in each of the output sets.
+The sentences will still correspond in each of the output sets. We also added ``--shuffle`` for more randomness in the
+output order, as by default ssam preserves order.
 
 Ssam can also read from stdin (provided you want to supply only one input document). If you're only doing one sample
 (rather than three as shown above), then it will simply output to stdout.
