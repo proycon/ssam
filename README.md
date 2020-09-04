@@ -10,7 +10,6 @@ development sets, or whatever sets you desire.
 * Supports both sampling without replacement (default) or with replacement.
 * Defaults to line-based sampling, but a custom delimiter can be configured to sample larger blocks.
 * Can handle multiple input files that will be considered **dependent**. Useful for splitting and sampling for instance parallel corpora.
-* Specify a seed for the random number generator to create reproducible splits.
-
+* Specify a seed for the random number generator to create reproducible samples.
 
 

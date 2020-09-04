@@ -221,6 +221,8 @@ fn main() {
                 *target = Some(remainder_set);
             }
         }
+    } else if !unassigned.is_empty() {
+        eprintln!("NOTICE: There are {} units not covered by any of the output sets", unassigned.len());
     }
 
     //output data
@@ -233,9 +235,6 @@ fn main() {
     }
 
 
-    if !unassigned.is_empty() {
-        eprintln!("NOTICE: There are {} units not covered by any of the output sets", unassigned.len());
-    }
 
 }
 
@@ -281,21 +280,25 @@ fn output_to_files(data: &Vec<Vec<String>>, assignment: &Vec<Option<u8>>, output
             let filename: String = outputprefix.clone().to_owned() +  "." + setname + "." + extension;
             let file = File::create(filename.as_str()).expect(format!("Unable to write file {}", filename.as_str()).as_str());
             filehandlers.push((file,false));
+            eprintln!("Writing to {}", filename.as_str());
         }
     }
 
     for (i, data) in data.iter().enumerate() {
-        let fh_offset = i * outputprefixes.len();
+        let fh_offset = i * setnames.len();
         for (unit, assigned_set) in data.iter().zip(assignment.iter()) {
             if let Some(assigned_set) =  assigned_set {
                 if let Some((file, written)) = filehandlers.get_mut(fh_offset + *assigned_set as usize) {
                     if delimiter.is_some() && *written {
-                        file.write(delimiter.unwrap().as_bytes());
-                        file.write(b"\n");
+                        file.write(delimiter.unwrap().as_bytes()).expect("writing to file");
+                        file.write(b"\n").expect("writing to file");
                     }
-                    file.write(unit.as_bytes());
-                    file.write(b"\n");
+                    file.write(unit.as_bytes()).expect("writing to file");
+                    file.write(b"\n").expect("writing to file");
                     *written = true;
+                } else {
+                    eprintln!("ERROR: File handler not found for set {} (offset {})", assigned_set, fh_offset);
+                    std::process::exit(2);
                 }
             }
         }
