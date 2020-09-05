@@ -125,7 +125,6 @@ fn main() {
         );
     } else {
         let files: Vec<_> = args.values_of("file").unwrap().collect();
-        let mut outputprefix: Vec<String> = Vec::new();
         for filename in files.iter() {
             let file = File::open(filename).expect(format!("Unable to open file {}", filename).as_str());
             let reader = BufReader::new(file);
@@ -172,10 +171,10 @@ fn main() {
     //list of unassigned indices
     let mut unassigned: Vec<usize> = Vec::with_capacity(datasize);
     //mapping of data points to sets
-    let mut assignment: Vec<Option<u8>> = Vec::with_capacity(datasize);
+    let mut assignment: Vec<Vec<u8>> = Vec::with_capacity(datasize);
     for i in 0..datasize {
         unassigned.push(i);
-        assignment.push(None); //assign to no set
+        assignment.push(Vec::with_capacity(1)); //assign to no set
     }
 
     //shuffle the list of unassigned items randomly
@@ -207,13 +206,13 @@ fn main() {
                 //with replacement
                 for _ in 0..targetsize {
                     let j: usize = rng.gen_range(0, datasize);
-                    assignment[j] = Some(i);
+                    assignment[j].push(i);
                 }
             } else {
                 //without replacement
                 for _ in 0..targetsize {
                     let j: usize = unassigned.pop().expect("unwrapping unassigned item");
-                    assignment[j] = Some(i);
+                    assignment[j].push(i);
                 }
             }
         }
@@ -221,8 +220,8 @@ fn main() {
 
     if let Some(remainder_set) = remainder_set {
         for target in assignment.iter_mut() {
-            if target.is_none() {
-                *target = Some(remainder_set);
+            if target.is_empty() {
+                target.push(remainder_set);
             }
         }
     } else if !unassigned.is_empty() {
@@ -279,7 +278,7 @@ fn parse_lines(lines: Lines<impl BufRead>, delimiter: Option<&str>) -> Vec<Strin
 }
 
 
-fn output_to_files(data: &Vec<Vec<String>>, assignment: &Vec<Option<u8>>, outputprefixes: &Vec<String>, setnames: &Vec<String>, delimiter: Option<&str>, extension: &str, shuffle: bool, rng: &mut Pcg64) {
+fn output_to_files(data: &Vec<Vec<String>>, assignment: &Vec<Vec<u8>>, outputprefixes: &Vec<String>, setnames: &Vec<String>, delimiter: Option<&str>, extension: &str, shuffle: bool, rng: &mut Pcg64) {
     let mut filehandlers: Vec<(File,bool)> = Vec::new(); //the boolean is there to keep track if the file has been written to already
     for outputprefix in outputprefixes.iter() {
         for setname in setnames.iter() {
@@ -298,8 +297,7 @@ fn output_to_files(data: &Vec<Vec<String>>, assignment: &Vec<Option<u8>>, output
         let fh_offset = i * setnames.len();
         for j in indices.iter() {
             let unit = &data[*j];
-            let assigned_set = &assignment[*j];
-            if let Some(assigned_set) =  assigned_set {
+            for assigned_set in assignment[*j].iter() {
                 if let Some((file, written)) = filehandlers.get_mut(fh_offset + *assigned_set as usize) {
                     if delimiter.is_some() && *written {
                         file.write(delimiter.unwrap().as_bytes()).expect("writing to file");
@@ -317,7 +315,7 @@ fn output_to_files(data: &Vec<Vec<String>>, assignment: &Vec<Option<u8>>, output
     }
 }
 
-fn output_to_stdout(data: &Vec<String>, assignment: &Vec<Option<u8>>,  delimiter: Option<&str>, shuffle: bool, rng: &mut Pcg64) {
+fn output_to_stdout(data: &Vec<String>, assignment: &Vec<Vec<u8>>,  delimiter: Option<&str>, shuffle: bool, rng: &mut Pcg64) {
     let mut written = false;
     let mut indices: Vec<usize> = (0..assignment.len()).collect();
     if shuffle {
@@ -325,8 +323,7 @@ fn output_to_stdout(data: &Vec<String>, assignment: &Vec<Option<u8>>,  delimiter
     }
     for j in indices.iter() {
         let unit = &data[*j];
-        let assigned_set = &assignment[*j];
-        if assigned_set.is_some() {
+        for _assigned_set in assignment[*j].iter() { //should always be 1
             if delimiter.is_some() && written {
                 print!("{}\n", delimiter.unwrap());
             }
