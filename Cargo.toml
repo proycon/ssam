@@ -1,6 +1,6 @@
 [package]
 name = "ssam"
-version = "0.1.1"
+version = "0.1.2" #also update in main.rs
 authors = ["Maarten van Gompel <proycon@anaproy.nl>"]
 description = "Ssam, short for split sampler, splits one or more text-based input files into multiple sets using random sampling. This is useful for splitting data into a training, test and development sets, or whatever sets you desire."
 homepage = "https://github.com/proycon/ssam/"

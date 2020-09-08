@@ -19,24 +19,24 @@ enum SetSize {
 
 fn main() {
     let args = App::new("ssam")
-        .version("0.1")
+        .version("0.1.2") //also update in Cargo.toml
         .author("Maarten van Gompel (proycon) <proycon@anaproy.nl>")
         .about("Ssam, short for split sampler, splits one or more input files into multiple sets using random sampling. Useful for splitting data into a training, test and development set. If multiple input files are specified, they are considered dependent and need to contain the same amount of units (e.g. lines)")
         .arg(Arg::with_name("delimiter")
             .long("delimiter")
-            .short("delimiter")
+            .short("-d")
             .takes_value(true)
             .help("Delimiter that seperates units. This is checker per line, set to an empty string to separate by an empty line. If this parameter remains unset entirely, each line will be a unit in its own right (the default)")
             )
         .arg(Arg::with_name("names")
             .long("names")
-            .short("n")
+            .short("-n")
             .takes_value(true)
             .help("Comma separated list of sample set names, example: train,test,dev. If not specified, sampled sets will be called sample1, sample2 etc... The sizes of each of the sets is specified with --sizes.")
             )
         .arg(Arg::with_name("sizes")
             .long("sizes")
-            .short("s")
+            .short("-s")
             .takes_value(true)
             .help("Comma seperated list of sizes of each of the sets to sample, i.e. the number of units to sample per set. If the number is a floating point value, it will be interpreted as a relative fraction. Use an asterisk (*) to represent all remaining units (can only be used once). Example: *,1000,1000. This value aligns with --names")
             )
@@ -260,7 +260,7 @@ fn parse_lines(lines: Lines<impl BufRead>, delimiter: Option<&str>) -> Vec<Strin
         if delimiter.is_none() {
             //every line is a unit
             units.push(line);
-        } else if line == delimiter.unwrap() {
+        } else if line.trim() == delimiter.unwrap() {
             units.push(mem::replace(&mut unit_buffer, String::new()));
         } else {
             if !unit_buffer.is_empty() {
@@ -279,13 +279,12 @@ fn parse_lines(lines: Lines<impl BufRead>, delimiter: Option<&str>) -> Vec<Strin
 
 
 fn output_to_files(data: &Vec<Vec<String>>, assignment: &Vec<Vec<u8>>, outputprefixes: &Vec<String>, setnames: &Vec<String>, delimiter: Option<&str>, extension: &str, shuffle: bool, rng: &mut Pcg64) {
-    let mut filehandlers: Vec<(File,bool)> = Vec::new(); //the boolean is there to keep track if the file has been written to already
+    let mut filehandlers: Vec<(File,String,usize)> = Vec::new();
     for outputprefix in outputprefixes.iter() {
         for setname in setnames.iter() {
             let filename: String = outputprefix.clone().to_owned() +  "." + setname + "." + extension;
             let file = File::create(filename.as_str()).expect(format!("Unable to write file {}", filename.as_str()).as_str());
-            filehandlers.push((file,false));
-            eprintln!("Writing to {}", filename.as_str());
+            filehandlers.push((file,filename,0));
         }
     }
 
@@ -298,20 +297,24 @@ fn output_to_files(data: &Vec<Vec<String>>, assignment: &Vec<Vec<u8>>, outputpre
         for j in indices.iter() {
             let unit = &data[*j];
             for assigned_set in assignment[*j].iter() {
-                if let Some((file, written)) = filehandlers.get_mut(fh_offset + *assigned_set as usize) {
-                    if delimiter.is_some() && *written {
+                if let Some((file, _, count)) = filehandlers.get_mut(fh_offset + *assigned_set as usize) {
+                    if delimiter.is_some() && *count > 0 {
                         file.write(delimiter.unwrap().as_bytes()).expect("writing to file");
                         file.write(b"\n").expect("writing to file");
                     }
                     file.write(unit.as_bytes()).expect("writing to file");
                     file.write(b"\n").expect("writing to file");
-                    *written = true;
+                    *count += 1;
                 } else {
                     eprintln!("ERROR: File handler not found for set {} (offset {})", assigned_set, fh_offset);
                     std::process::exit(2);
                 }
             }
         }
+    }
+
+    for (_,filename, count) in filehandlers {
+        eprintln!("Wrote {} units to {}", count, filename.as_str());
     }
 }
 
