@@ -10,6 +10,9 @@ use rand::prelude::*;
 use rand::seq::SliceRandom;
 use rand_pcg::Pcg64;
 use clap::{Arg, App};
+use std::collections::HashSet;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::Hasher;
 
 enum SetSize {
     Absolute(usize),
@@ -19,14 +22,14 @@ enum SetSize {
 
 fn main() {
     let args = App::new("ssam")
-        .version("0.1.2") //also update in Cargo.toml
+        .version("0.2.0") //also update in Cargo.toml
         .author("Maarten van Gompel (proycon) <proycon@anaproy.nl>")
         .about("Ssam, short for split sampler, splits one or more input files into multiple sets using random sampling. Useful for splitting data into a training, test and development set. If multiple input files are specified, they are considered dependent and need to contain the same amount of units (e.g. lines)")
         .arg(Arg::with_name("delimiter")
             .long("delimiter")
             .short("-d")
             .takes_value(true)
-            .help("Delimiter that seperates units. This is checker per line, set to an empty string to separate by an empty line. If this parameter remains unset entirely, each line will be a unit in its own right (the default)")
+            .help("Delimiter that separates units. This is checker per line, set to an empty string to separate by an empty line. If this parameter remains unset entirely, each line will be a unit in its own right (the default)")
             )
         .arg(Arg::with_name("names")
             .long("names")
@@ -38,7 +41,7 @@ fn main() {
             .long("sizes")
             .short("-s")
             .takes_value(true)
-            .help("Comma seperated list of sizes of each of the sets to sample, i.e. the number of units to sample per set. If the number is a floating point value, it will be interpreted as a relative fraction. Use an asterisk (*) to represent all remaining units (can only be used once). Example: *,1000,1000. This value aligns with --names")
+            .help("Comma separated list of sizes of each of the sets to sample, i.e. the number of units to sample per set. If the number is a floating point value, it will be interpreted as a relative fraction. Use an asterisk (*) to represent all remaining units (can only be used once). Example: *,1000,1000. This value aligns with --names")
             )
         .arg(Arg::with_name("replace")
             .long("replace")
@@ -55,6 +58,12 @@ fn main() {
             .short("-S")
             .takes_value(true)
             .help("Random seed, initialises the random number generator and allows pseudo-randomness and reproducibility.")
+            )
+        .arg(Arg::with_name("exclude")
+            .long("exclude")
+            .short("-X")
+            .takes_value(true)
+            .help("Comma separated list of aligned files whose contents are to be excluded from the input files when sampling. You can use this for example to exclude existing test data from ending up in new training data. There must be exactly as many exclude files as there are input files, the corresponding pairs are used to match contents.")
             )
         .arg(Arg::with_name("output")
             .long("output")
@@ -110,6 +119,18 @@ fn main() {
         eprintln!("Warning: you specified more set names than set sizes!");
     }
 
+    let exclude: Option<Vec<HashSet<u64>>> = if args.is_present("exclude") {
+        let mut exclude: Vec<HashSet<u64>> = Vec::new();
+        for filename in args.value_of("exclude").unwrap().split(",").into_iter() {
+            let file = File::open(filename).expect(format!("Unable to open file {}", filename).as_str());
+            let reader = BufReader::new(file);
+            exclude.push( parse_lines_as_set(reader.lines(), delimiter) );
+        }
+        Some(exclude)
+    } else {
+        None
+    };
+
     let mut data: Vec<Vec<String>> = Vec::new();
 
     let mut outputprefixes: Vec<String> = Vec::new();
@@ -139,6 +160,14 @@ fn main() {
                 }
             );
         }
+    }
+
+    if let Some(exclude) = exclude {
+        if data.len() != exclude.len() {
+            eprintln!("ERROR: You must specify as many files for exclude as you specified for data");
+            std::process::exit(1);
+        }
+        apply_exclude(&mut data, exclude);
     }
 
     if data.is_empty() || data[0].is_empty() {
@@ -252,6 +281,40 @@ fn get_size(size: &SetSize, datasize: usize) -> usize {
 }
 
 ///Parses lines into 'units' (by default equal to lines, but could be larger blocks)
+fn parse_lines_as_set(lines: Lines<impl BufRead>, delimiter: Option<&str>) -> HashSet<u64> {
+    let mut set: HashSet<u64> = HashSet::new();
+    let mut unit_buffer: String = String::new();
+    for (i, line) in lines.enumerate() {
+        let line = line.expect(format!("Error parsing line {}",i+1).as_str());
+        if delimiter.is_none() {
+            //every line is a unit
+            let mut hasher = DefaultHasher::new();
+            hasher.write(line.as_bytes());
+            set.insert(hasher.finish());
+        } else if line.trim() == delimiter.unwrap() {
+            let mut hasher = DefaultHasher::new();
+            hasher.write(unit_buffer.as_bytes());
+            set.insert(hasher.finish());
+            unit_buffer.clear();
+        } else {
+            if !unit_buffer.is_empty() {
+                unit_buffer.push('\n');
+            }
+            unit_buffer += &line;
+        }
+
+    }
+    if delimiter.is_some() {
+        //add the final unit
+        let mut hasher = DefaultHasher::new();
+        hasher.write(unit_buffer.as_bytes());
+        set.insert(hasher.finish());
+        unit_buffer.clear();
+    }
+    set
+}
+
+///Parses lines into 'units' (by default equal to lines, but could be larger blocks)
 fn parse_lines(lines: Lines<impl BufRead>, delimiter: Option<&str>) -> Vec<String> {
     let mut units: Vec<String> = Vec::new();
     let mut unit_buffer: String = String::new();
@@ -335,3 +398,23 @@ fn output_to_stdout(data: &Vec<String>, assignment: &Vec<Vec<u8>>,  delimiter: O
         }
     }
 }
+
+fn apply_exclude(data: &mut Vec<Vec<String>>, exclude: Vec<HashSet<u64>>) {
+    let mut indices: Vec<usize> = Vec::new(); //indices to remove
+    for (data, exclude) in data.iter().zip(exclude.iter()) {
+        for (i, unit) in data.iter().enumerate() {
+            let mut hasher = DefaultHasher::new();
+            hasher.write(unit.as_bytes());
+            if exclude.contains(&hasher.finish()) {
+                indices.push(i); //mark for removal
+            }
+        }
+    }
+    //remote marked
+    for data in data.iter_mut() {
+        let mut i = 0;
+        data.retain(|_| (!indices.contains(&i), i += 1).0 );
+    }
+}
+
+
